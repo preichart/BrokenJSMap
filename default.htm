@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="initial-scale=1, maximum-scale=1,user-scalable=no" />
+    <title>Simple Map</title>
+    <link rel="stylesheet" href="http://js.arcgis.com/3.12/esri/css/esri.css">
+    <link rel="stylesheet" href="http://js.arcgis.com/3.12/dijit/themes/claro/claro.css">
+    <style>
+        html,
+        body, #map {
+            height: 100%;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+            font-family: Verdana, Geneva, Aria;
+        }
+        
+        #HomeButton {
+            position: absolute;
+            top: 95px;
+            left: 20px;
+            z-index: 50;
+        }
+		
+		#search {
+			display: block;
+			position: absolute;
+			z-index: 2;
+			top: 20px;
+			left: 74px;
+		}
+
+		#leftPane {
+			width: 15%;
+		}
+		
+		.esriLegendLayerLabel {
+			display: none;
+		}
+        
+        .info_items {
+            padding-bottom: 10px;
+            background-color: white;
+        }
+    </style>
+    <script src="http://js.arcgis.com/3.12/"></script>
+    <script>
+        var map;
+        var hydroParams;
+        var hydroLayerDefs = [];
+		var hydroLegend;
+		var geocoder;
+		var popup;
+
+        require(["esri/map", 
+				 "esri/layers/ArcGISDynamicMapServiceLayer", 
+				 "esri/layers/ImageParameters",
+				 "esri/geometry/Extent",
+				 "dojo/_base/array",
+				 "dijit/layout/BorderContainer",
+				 "dijit/layout/ContentPane",
+				 "esri/dijit/HomeButton",
+				 "esri/dijit/Legend",
+				 "esri/dijit/Geocoder",
+				 "esri/dijit/Popup",
+				 "esri/tasks/IdentifyTask",
+				 "esri/tasks/IdentifyParameters",
+				 "esri/InfoTemplate",
+				 "dojo/parser",
+				 "dojo/dom-construct",
+				 "dojo/query",
+				 "dojo/on",
+				 "dojo/dom",
+				 "esri/domUtils",
+				 "dojo/domReady!"
+        ], function(Map,
+				    ArcGISDynamicMapServiceLayer,
+					ImageParameters,
+					Extent,
+					arrayUtils,
+					BorderContainer,
+					ContentPane,
+					HomeButton,
+					Legend,
+					Geocoder,
+					Popup,
+					IdentifyTask,
+					IdentifyParameters,
+					InfoTemplate,
+					parser,
+					domConstruct,
+					query,
+					on,
+					dom,
+					domUtils) {
+					
+            parser.parse();
+
+			//Set extent of map
+            mapExtent = new Extent({
+                xmin: -11449017.20767304,
+                ymin: 4193746.080028745,
+                xmax: -9100871.698753048,
+                ymax: 5065739.6987058045,
+                spatialReference: {
+                    wkid: 102100
+                }
+            });
+			
+			//create the popup	
+	        popup = new Popup({}, domConstruct.create("div"));
+	        popup.visibleWhenEmpty = false;
+	        popup.resize(375);
+
+			//Create map
+            map = new Map("map", {
+                basemap: "topo",
+				infoWindow: popup,
+                extent: mapExtent
+            });
+
+            //Image parameters for hydro dynamic map service layer
+            hydroParams = new ImageParameters();
+            hydroParams.layerIds = [0];
+            hydroParams.layerOption = ImageParameters.LAYER_OPTION_SHOW;
+
+            //Hydro layer definitions
+            hydroLayerDefs[0] = "state='MO'";
+            hydroParams.layerDefinitions = hydroLayerDefs;
+
+            //Dynamic layer for hyrdro layer
+            var hydroLayer = ArcGISDynamicMapServiceLayer("http://gis.srh.noaa.gov/arcgis/rest/services/ahps_gauges/MapServer/", {
+                "showAttribution": false,
+                "opacity": 0.8,
+                "imageParameters": hydroParams
+            });
+
+            //Add hydro layer
+            map.addLayer(hydroLayer);
+
+			//Add home button
+            var home = new HomeButton({
+                map: map
+            }, "HomeButton");
+            home.startup();
+			
+			//Create legend
+			hydroLegend = new Legend({
+				map : map,
+				layerInfos : [{
+					"layer" : hydroLayer,
+					"title" : "Observed River Stages"
+				}]
+			}, dom.byId("legendDiv"));
+			hydroLegend.startup();
+			
+			//Create geocoder
+			geocoder = new Geocoder({ 
+				autoNavigate: true, // do not zoom to best result
+				maxLocations: 20, // increase number of results returned
+				autoComplete: true,
+				map: map,
+				arcgisGeocoder: {
+					url: "http://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer",
+					name: "Esri World Geocoder",
+					placeholder: "Find a place",
+					sourceCountry: "USA" // limit search to the United States
+				}
+			}, "search");
+			geocoder.startup();
+			
+			//On click function for check box
+			on(dom.byId("hBox"), "click", function () {
+				if(dom.byId("hBox").checked) {
+						hydroLayer.show();
+					}
+					else {
+						hydroLayer.hide();
+					}
+			});
+			
+			//Start and stop loading indicator
+	        map.on("update-start", function () {
+	            domUtils.show(dom.byId("divLoadingIndicator"));
+	        });
+
+	        map.on("update-end", function () {
+	            domUtils.hide(dom.byId("divLoadingIndicator"));
+	        });
+			
+			//Create info window
+			function mapReady() {
+	            map.on("click", executeIdentifyTask);
+
+	            //create identify tasks and setup parameters 
+	            identifyTask = new IdentifyTask("http://gis.srh.noaa.gov/arcgis/rest/services/ahps_gauges/MapServer");
+	            identifyParams = new IdentifyParameters();
+	            identifyParams.tolerance = 3;
+	            identifyParams.returnGeometry = true;
+	            identifyParams.layerIds = [0];
+	            identifyParams.layerOption = IdentifyParameters.LAYER_OPTION_ALL;
+	            identifyParams.layerDefinitions = hydroLayerDefs;
+	            identifyParams.width = map.width;
+	            identifyParams.height = map.height;
+	        }
+
+	        //Function to identify features and set the content
+	        function executeIdentifyTask(evt) {
+	            map.graphics.clear();
+	            identifyParams.geometry = evt.mapPoint;
+	            identifyParams.mapExtent = map.extent;
+	            deferred = identifyTask.execute(identifyParams);
+
+	            deferred.addCallback(function (response) {
+	                return dojo.map(response, function (result) {
+	                    feature = result.feature;
+	                    feature.attributes.layerName = result.layerName;
+	                    infoTemplate = new InfoTemplate();
+	                    infoTemplate.setTitle(result.layerName.bold().toUpperCase());
+	                    infoTemplate.setContent("<b>Location: </b> ${location}<br><b>Water Body: </b> ${waterbody}<br> <b>Stage: </b> ${waterbody}");
+	                    feature.setInfoTemplate(infoTemplate);
+	                    return feature;
+	                });
+	            });
+
+	            map.infoWindow.setFeatures([deferred]);
+	            map.infoWindow.show(evt.mapPoint);
+	        }
+			
+			map.on("load", mapReady);
+			
+        });
+    </script>
+</head>
+
+<body class="claro">
+    <div id="mainWindow" data-dojo-type="dijit.layout.BorderContainer" data-dojo-props="design:'headline'" style="width:100%; height:100%;">
+        <div id="header" data-dojo-type="dijit.layout.ContentPane" data-dojo-props="region:'top'">
+            <div id="title">Title Pane
+            </div>
+        </div>
+        <div data-dojo-type="dijit.layout.ContentPane" id="leftPane" data-dojo-props="region:'left'">Left Pane
+            <div id="layer_list" class="info_items">
+                <input type='checkbox' name='hydrobox' checked='checked' class='list_item' id='hBox' />
+                <label for='hBox'> Toggle River Stages</label>
+                <br>
+            </div>
+			<div id="legendDiv"></div>
+        </div>
+        <div id="map" data-dojo-type="dijit.layout.ContentPane" data-dojo-props="region:'center'">
+			<div id="divLoadingIndicator" class="divLoadingIndicator" style="display: block;left:50%; top:50%; position:absolute; z-index:1000">
+                Loading....
+            </div>
+            <div id="HomeButton"></div>
+			<div id="search"></div>
+        </div>
+        <div id="footer" data-dojo-type="dijit.layout.ContentPane" data-dojo-props="region:'bottom'">Footer Pane
+            <span id="dataSource">
+        </span>
+        </div>
+    </div>
+</body>
+</html>
