@@ -27,20 +27,8 @@
             z-index: 50;
         }
         
-        #search {
-            display: block;
-            position: absolute;
-            z-index: 2;
-            top: 20px;
-            left: 74px;
-        }
-        
         #leftPane {
             width: 15%;
-        }
-        
-        .esriLegendLayerLabel {
-            display: none;
         }
         
         .info_items {
@@ -64,12 +52,6 @@
             "dojo/_base/array",
             "dijit/layout/BorderContainer",
             "dijit/layout/ContentPane",
-            "esri/dijit/Legend",
-            "esri/dijit/Geocoder",
-            "esri/dijit/Popup",
-            "esri/tasks/IdentifyTask",
-            "esri/tasks/IdentifyParameters",
-            "esri/InfoTemplate",
             "dojo/parser",
             "dojo/dom-construct",
             "dojo/query",
@@ -84,12 +66,6 @@
             arrayUtils,
             BorderContainer,
             ContentPane,
-            Legend,
-            Geocoder,
-            Popup,
-            IdentifyTask,
-            IdentifyParameters,
-            InfoTemplate,
             parser,
             domConstruct,
             query,
@@ -109,11 +85,6 @@
                     wkid: 102100
                 }
             });
-
-            //create the popup	
-            popup = new Popup({}, domConstruct.create("div"));
-            popup.visibleWhenEmpty = false;
-            popup.resize(375);
 
             //Create map
             map = new Map("map", {
@@ -147,32 +118,6 @@
             }, "HomeButton");
             home.startup();
 
-            //Create legend
-            hydroLegend = new Legend({
-                map: map,
-                autoUpdate: false,
-                layerInfos: [{
-                    "layer": hydroLayer,
-                    "title": "Observed River Stages"
-                }]
-            }, dom.byId("legendDiv"));
-            hydroLegend.startup();
-
-            //Create geocoder
-            geocoder = new Geocoder({
-                autoNavigate: true, // do not zoom to best result
-                maxLocations: 20, // increase number of results returned
-                autoComplete: true,
-                map: map,
-                arcgisGeocoder: {
-                    url: "http://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer",
-                    name: "Esri World Geocoder",
-                    placeholder: "Find a place",
-                    sourceCountry: "USA" // limit search to the United States
-                }
-            }, "search");
-            geocoder.startup();
-
             //On click function for check box
             on(dom.byId("hBox"), "click", function() {
                 if (dom.byId("hBox").checked) {
@@ -192,47 +137,6 @@
                 domUtils.hide(dom.byId("divLoadingIndicator"));
             });
 
-            //Create info window
-            function mapReady() {
-                map.on("click", executeIdentifyTask);
-
-                //create identify tasks and setup parameters 
-                identifyTask = new IdentifyTask("http://gis.srh.noaa.gov/arcgis/rest/services/ahps_gauges/MapServer");
-                identifyParams = new IdentifyParameters();
-                identifyParams.tolerance = 3;
-                identifyParams.returnGeometry = true;
-                identifyParams.layerIds = [0];
-                identifyParams.layerOption = IdentifyParameters.LAYER_OPTION_ALL;
-                identifyParams.layerDefinitions = hydroLayerDefs;
-                identifyParams.width = map.width;
-                identifyParams.height = map.height;
-            }
-
-            //Function to identify features and set the content
-            function executeIdentifyTask(evt) {
-                map.graphics.clear();
-                identifyParams.geometry = evt.mapPoint;
-                identifyParams.mapExtent = map.extent;
-                deferred = identifyTask.execute(identifyParams);
-
-                deferred.addCallback(function(response) {
-                    return dojo.map(response, function(result) {
-                        feature = result.feature;
-                        feature.attributes.layerName = result.layerName;
-                        infoTemplate = new InfoTemplate();
-                        infoTemplate.setTitle(result.layerName.bold().toUpperCase());
-                        infoTemplate.setContent("<b>Location: </b> ${location}<br><b>Water Body: </b> ${waterbody}<br> <b>Stage: </b> ${waterbody}");
-                        feature.setInfoTemplate(infoTemplate);
-                        return feature;
-                    });
-                });
-
-                map.infoWindow.setFeatures([deferred]);
-                map.infoWindow.show(evt.mapPoint);
-            }
-
-            map.on("load", mapReady);
-
         });
     </script>
 </head>
@@ -249,14 +153,12 @@
                 <label for='hBox'> Toggle River Stages</label>
                 <br>
             </div> <!-- End div for check box -->
-            <div id="legendDiv"></div>
         </div>
         <div id="map" data-dojo-type="dijit.layout.ContentPane" data-dojo-props="region:'center'">
             <div id="divLoadingIndicator" class="divLoadingIndicator" style="display: block;left:50%; top:50%; position:absolute; z-index:1000">
                 <img src="loader.gif" />
             </div>
             <div id="HomeButton"></div>
-            <div id="search"></div>
         </div>
         <div id="footer" data-dojo-type="dijit.layout.ContentPane" data-dojo-props="region:'bottom'">Footer Pane
         </div>
